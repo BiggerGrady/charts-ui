@@ -13,9 +13,9 @@ npm i ai-echarts echarts
 ## Usage
 
 ```ts
-import { compile, type ChartSpec } from 'ai-echarts';
+import { compile, type ChartSpec } from 'ai-echarts'; // core only
 import { AiChart } from 'ai-echarts/react'; // or 'ai-echarts/vue'
-import { generateChartSpec } from 'ai-echarts/ai';
+import { generateChartSpec } from 'ai-echarts/ai'; // keep AI off the UI bundle root
 ```
 
 ### React

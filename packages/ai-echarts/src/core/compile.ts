@@ -1,4 +1,5 @@
 import type { EChartsOption } from 'echarts';
+import { assertEncodedFieldsExist, assertRawFieldsForTransforms, yFields } from './fields';
 import { chartSpecSchema } from './schema';
 import { applyTransforms } from './transform';
 import { getThemeTokens } from './theme';
@@ -8,34 +9,9 @@ export interface CompileOptions {
   theme?: ThemeName;
 }
 
-function yFields(spec: ChartSpec): string[] {
-  const y = spec.encode.y;
-  if (!y) return [];
-  return Array.isArray(y) ? y : [y];
-}
-
-function assertFields(spec: ChartSpec, data: DataRow[]) {
-  if (!data.length) return;
-  const keys = new Set(Object.keys(data[0] ?? {}));
-  // after transform, fields may be derived; only check encode against sample loosely
-  const candidates = [
-    spec.encode.x,
-    spec.encode.category,
-    spec.encode.angle,
-    spec.encode.color,
-    spec.encode.size,
-    ...yFields(spec),
-  ].filter(Boolean) as string[];
-
-  // If raw data lacks fields but transform will create them, skip hard fail
-  const hasAggregate = spec.transform?.some((t) => t.op === 'aggregate');
-  if (hasAggregate) return;
-
-  for (const c of candidates) {
-    if (!keys.has(c)) {
-      throw new Error(`Field "${c}" not found in data. Available: ${[...keys].join(', ')}`);
-    }
-  }
+export interface TablePayload {
+  rows: DataRow[];
+  columns: string[];
 }
 
 function baseOption(title: string | undefined, theme: ThemeName): EChartsOption {
@@ -57,16 +33,26 @@ function baseOption(title: string | undefined, theme: ThemeName): EChartsOption 
   };
 }
 
+export function extractTablePayload(option: EChartsOption): TablePayload | null {
+  const marker = (option as { __aiEchartsTable?: TablePayload }).__aiEchartsTable;
+  return marker ?? null;
+}
+
 export function compile(specInput: ChartSpec, data: DataRow[], options: CompileOptions = {}): EChartsOption {
   const spec = chartSpecSchema.parse(specInput) as ChartSpec;
-  assertFields(spec, data);
+  assertRawFieldsForTransforms(spec, data);
   const rows = applyTransforms(data, spec.transform ?? []);
+  assertEncodedFieldsExist(spec, rows);
+
   const theme = options.theme ?? spec.style?.theme ?? 'light';
   const tokens = getThemeTokens(theme);
   const option = baseOption(spec.title, theme);
 
   if (spec.chartType === 'table') {
-    // ECharts has no native table; return a placeholder option consumers can detect
+    const payload: TablePayload = {
+      rows,
+      columns: rows[0] ? Object.keys(rows[0]) : [],
+    };
     return {
       ...option,
       title: { text: spec.title ?? 'Table', textStyle: { color: tokens.text } },
@@ -75,15 +61,13 @@ export function compile(specInput: ChartSpec, data: DataRow[], options: CompileO
         left: 'center',
         top: 'middle',
         style: {
-          text: `Table view (${rows.length} rows)\nUse chartType table in host UI`,
+          text: `Table · ${rows.length} rows · render with host table UI`,
           fill: tokens.axis,
           align: 'center',
           fontSize: 13,
         },
       },
-      ...({
-        __aiEchartsTable: { rows, columns: rows[0] ? Object.keys(rows[0]) : [] },
-      } as Record<string, unknown>),
+      ...( { __aiEchartsTable: payload } as object ),
     } as EChartsOption;
   }
 
@@ -107,8 +91,18 @@ export function compile(specInput: ChartSpec, data: DataRow[], options: CompileO
     const x = spec.encode.x;
     const y = yFields(spec)[0];
     if (!x || !y) throw new Error('scatter requires encode.x and encode.y');
-    option.xAxis = { type: 'value', name: x, axisLabel: { color: tokens.axis }, splitLine: { lineStyle: { color: tokens.split } } };
-    option.yAxis = { type: 'value', name: y, axisLabel: { color: tokens.axis }, splitLine: { lineStyle: { color: tokens.split } } };
+    option.xAxis = {
+      type: 'value',
+      name: x,
+      axisLabel: { color: tokens.axis },
+      splitLine: { lineStyle: { color: tokens.split } },
+    };
+    option.yAxis = {
+      type: 'value',
+      name: y,
+      axisLabel: { color: tokens.axis },
+      splitLine: { lineStyle: { color: tokens.split } },
+    };
     option.series = [
       {
         type: 'scatter',
@@ -119,7 +113,6 @@ export function compile(specInput: ChartSpec, data: DataRow[], options: CompileO
     return option;
   }
 
-  // line / bar / area
   const x = spec.encode.x;
   const ys = yFields(spec);
   if (!x || ys.length === 0) {
@@ -131,10 +124,18 @@ export function compile(specInput: ChartSpec, data: DataRow[], options: CompileO
 
   if (horizontal) {
     option.yAxis = { type: 'category', data: categories, axisLabel: { color: tokens.axis } };
-    option.xAxis = { type: 'value', axisLabel: { color: tokens.axis }, splitLine: { lineStyle: { color: tokens.split } } };
+    option.xAxis = {
+      type: 'value',
+      axisLabel: { color: tokens.axis },
+      splitLine: { lineStyle: { color: tokens.split } },
+    };
   } else {
     option.xAxis = { type: 'category', data: categories, axisLabel: { color: tokens.axis } };
-    option.yAxis = { type: 'value', axisLabel: { color: tokens.axis }, splitLine: { lineStyle: { color: tokens.split } } };
+    option.yAxis = {
+      type: 'value',
+      axisLabel: { color: tokens.axis },
+      splitLine: { lineStyle: { color: tokens.split } },
+    };
   }
 
   option.series = ys.map((field) => {
@@ -174,22 +175,25 @@ export function compile(specInput: ChartSpec, data: DataRow[], options: CompileO
 
 export function safeCompile(spec: ChartSpec, data: DataRow[], options?: CompileOptions) {
   try {
-    return { ok: true as const, option: compile(spec, data, options) };
+    return { ok: true as const, option: compile(spec, data, options), table: null as TablePayload | null };
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const option = compile(
+      {
+        id: 'fallback_table',
+        title: spec.title ?? 'Fallback table',
+        chartType: 'table',
+        encode: {},
+        insight: message,
+      },
+      data,
+      options,
+    );
     return {
       ok: false as const,
-      error: error instanceof Error ? error.message : String(error),
-      option: compile(
-        {
-          id: 'fallback_table',
-          title: spec.title ?? 'Fallback table',
-          chartType: 'table',
-          encode: {},
-          insight: error instanceof Error ? error.message : String(error),
-        },
-        data,
-        options,
-      ),
+      error: message,
+      option,
+      table: extractTablePayload(option),
     };
   }
 }

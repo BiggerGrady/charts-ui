@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { compile, safeCompile } from './compile';
+import { compile, extractTablePayload, safeCompile } from './compile';
 import { recommendByRules } from './recommend';
 import { profileData } from './profile';
+import { applyTransforms } from './transform';
 import type { ChartSpec, DataRow } from './types';
 
 const sample: DataRow[] = [
@@ -26,6 +27,28 @@ describe('recommendByRules', () => {
     expect(specs.length).toBeGreaterThan(0);
     expect(['line', 'bar', 'area', 'pie', 'scatter', 'table']).toContain(specs[0].chartType);
   });
+
+  it('boosts bar when NL asks for comparison', () => {
+    const specs = recommendByRules(sample, 1, '按地区对比销售额，用柱状图');
+    expect(specs[0].chartType).toBe('bar');
+    expect(specs[0].title).toMatch(/对比|region|地区/);
+  });
+});
+
+describe('applyTransforms', () => {
+  it('aggregates without keeping row arrays', () => {
+    const rows = applyTransforms(sample, [
+      {
+        op: 'aggregate',
+        groupBy: ['region'],
+        metrics: [{ field: 'sales', fn: 'sum', as: 'sales' }],
+      },
+      { op: 'sort', by: 'sales', order: 'desc' },
+    ]);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].region).toBe('华东');
+    expect(rows[0].sales).toBe(270);
+  });
 });
 
 describe('compile', () => {
@@ -48,6 +71,26 @@ describe('compile', () => {
     expect(Array.isArray(option.series)).toBe(true);
   });
 
+  it('rejects missing encode fields after transform', () => {
+    expect(() =>
+      compile(
+        {
+          id: 'bad',
+          chartType: 'bar',
+          encode: { x: 'region', y: 'not_exist' },
+          transform: [
+            {
+              op: 'aggregate',
+              groupBy: ['region'],
+              metrics: [{ field: 'sales', fn: 'sum', as: 'sales' }],
+            },
+          ],
+        },
+        sample,
+      ),
+    ).toThrow(/not_exist/);
+  });
+
   it('safeCompile falls back on bad fields', () => {
     const result = safeCompile(
       {
@@ -58,6 +101,6 @@ describe('compile', () => {
       sample,
     );
     expect(result.ok).toBe(false);
-    expect((result.option as { __aiEchartsTable?: unknown }).__aiEchartsTable).toBeTruthy();
+    expect(extractTablePayload(result.option)).toBeTruthy();
   });
 });
