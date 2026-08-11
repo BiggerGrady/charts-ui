@@ -606,3 +606,9 @@ export function planExploreDashboard(schema: DatasetSchema): DashboardSpec {
 
 **一句话产品定位**：  
 > AI-ECharts = **可校验的图表契约（Spec）** + **确定性 ECharts 编译器** + **薄跨端组件** + **只负责决策的 LLM Agent**。
+
+---
+
+## 14. 相关设计
+
+- [多框架第三方引入兼容框架 & Demo 页面设计](./多框架第三方引入与Demo设计.md)：React/Vue npm 分包、API 镜像、Demo 信息架构与线框（设计阶段，未实现）。
