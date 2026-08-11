@@ -1,0 +1,20 @@
+{
+  "name": "charts-ui",
+  "private": true,
+  "packageManager": "pnpm@10.33.3",
+  "scripts": {
+    "build": "pnpm --filter ai-echarts build",
+    "test": "pnpm --filter ai-echarts test",
+    "dev:react": "pnpm --filter demo-react dev",
+    "dev:vue": "pnpm --filter demo-vue dev",
+    "typecheck": "pnpm --filter ai-echarts typecheck"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}
