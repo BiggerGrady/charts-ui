@@ -1,13 +1,10 @@
+import { compile } from '../core/compile';
+import { encodeFieldNames } from '../core/fields';
 import { compactSchemaForPrompt, profileData } from '../core/profile';
 import { recommendByRules } from '../core/recommend';
 import { chartSpecSchema } from '../core/schema';
 import type { ChartSpec, DataRow, DatasetSchema } from '../core/types';
-import {
-  chatCompletion,
-  extractJsonObject,
-  type LlmConfig,
-  MissingApiKeyError,
-} from './deepseek';
+import { chatCompletion, extractJsonObject, type LlmConfig } from './deepseek';
 import { buildGenerateUserPrompt, buildPatchUserPrompt, CHART_SYSTEM_PROMPT } from './prompts';
 
 export interface GenerateChartArgs {
@@ -15,7 +12,7 @@ export interface GenerateChartArgs {
   data: DataRow[];
   schema?: DatasetSchema;
   llm?: LlmConfig;
-  /** If true and no API key, fall back to rule recommend instead of throwing */
+  /** Only when true: fall back to rules on missing key / LLM / compile failure */
   fallbackToRules?: boolean;
 }
 
@@ -24,6 +21,7 @@ export interface GenerateChartResult {
   source: 'llm' | 'rules';
   schema: DatasetSchema;
   raw?: string;
+  warnings?: string[];
 }
 
 function ensureId(spec: ChartSpec): ChartSpec {
@@ -31,73 +29,109 @@ function ensureId(spec: ChartSpec): ChartSpec {
   return { ...spec, id: `chart_${Math.random().toString(36).slice(2, 9)}` };
 }
 
+function unknownFields(spec: ChartSpec, schema: DatasetSchema): string[] {
+  const fieldNames = new Set(schema.fields.map((f) => f.name));
+  // Transform aliases may be invented; only validate encode names against schema OR aggregate `as`
+  const aliases = new Set<string>();
+  for (const t of spec.transform ?? []) {
+    if (t.op === 'aggregate') {
+      for (const m of t.metrics) {
+        aliases.add(m.as ?? `${m.fn}_${m.field}`);
+      }
+    }
+  }
+  return encodeFieldNames(spec).filter((u) => !fieldNames.has(u) && !aliases.has(u));
+}
+
+function parseSpec(raw: string): ChartSpec {
+  return ensureId(chartSpecSchema.parse(extractJsonObject(raw)) as ChartSpec);
+}
+
+function validateCompilable(spec: ChartSpec, data: DataRow[]) {
+  compile(spec, data);
+}
+
+async function askModel(nl: string, schema: DatasetSchema, candidates: ChartSpec[], llm?: LlmConfig, extra?: string) {
+  const content =
+    buildGenerateUserPrompt({
+      nl,
+      schemaJson: JSON.stringify(compactSchemaForPrompt(schema)),
+      candidatesJson: JSON.stringify(candidates),
+    }) + (extra ? `\n\n${extra}` : '');
+
+  return chatCompletion(
+    [
+      { role: 'system', content: CHART_SYSTEM_PROMPT },
+      { role: 'user', content },
+    ],
+    llm,
+  );
+}
+
+function rulesFallback(schema: DatasetSchema, reason: string, nl?: string): GenerateChartResult {
+  const spec = recommendByRules(schema, 1, nl)[0];
+  if (!spec) {
+    throw new Error(`No rule fallback available: ${reason}`);
+  }
+  const friendly =
+    reason.includes('Missing DeepSeek API key') || reason.includes('API key')
+      ? '未配置 API Key，已使用规则推荐'
+      : `AI 不可用，已使用规则推荐（${reason}）`;
+  return {
+    spec: { ...spec, insight: friendly },
+    source: 'rules',
+    schema,
+    warnings: [friendly, reason],
+  };
+}
+
 export async function generateChartSpec(args: GenerateChartArgs): Promise<GenerateChartResult> {
   const schema = args.schema ?? profileData(args.data);
-  const candidates = recommendByRules(schema, 3);
+  const candidates = recommendByRules(schema, 3, args.nl);
+  const fallback = Boolean(args.fallbackToRules);
 
   try {
-    const raw = await chatCompletion(
-      [
-        { role: 'system', content: CHART_SYSTEM_PROMPT },
-        {
-          role: 'user',
-          content: buildGenerateUserPrompt({
-            nl: args.nl,
-            schemaJson: JSON.stringify(compactSchemaForPrompt(schema), null, 2),
-            candidatesJson: JSON.stringify(candidates, null, 2),
-          }),
-        },
-      ],
-      args.llm,
-    );
+    let raw = await askModel(args.nl, schema, candidates, args.llm);
+    let parsed = parseSpec(raw);
 
-    let parsed = chartSpecSchema.parse(extractJsonObject(raw)) as ChartSpec;
-    parsed = ensureId(parsed);
-
-    // one retry on field mismatch soft validation
-    const fieldNames = new Set(schema.fields.map((f) => f.name));
-    const used = [
-      parsed.encode.x,
-      parsed.encode.category,
-      parsed.encode.angle,
-      parsed.encode.color,
-      ...(Array.isArray(parsed.encode.y) ? parsed.encode.y : parsed.encode.y ? [parsed.encode.y] : []),
-    ].filter(Boolean) as string[];
-
-    const missing = used.filter((u) => !fieldNames.has(u));
+    let missing = unknownFields(parsed, schema);
     if (missing.length) {
-      const retryRaw = await chatCompletion(
-        [
-          { role: 'system', content: CHART_SYSTEM_PROMPT },
-          {
-            role: 'user',
-            content: `${buildGenerateUserPrompt({
-              nl: args.nl,
-              schemaJson: JSON.stringify(compactSchemaForPrompt(schema), null, 2),
-              candidatesJson: JSON.stringify(candidates, null, 2),
-            })}\n\nPrevious invalid spec used unknown fields: ${missing.join(', ')}. Fix and return JSON only.`,
-          },
-        ],
+      raw = await askModel(
+        args.nl,
+        schema,
+        candidates,
         args.llm,
+        `Previous invalid spec used unknown fields: ${missing.join(', ')}. Fix and return JSON only.`,
       );
-      parsed = ensureId(chartSpecSchema.parse(extractJsonObject(retryRaw)) as ChartSpec);
+      parsed = parseSpec(raw);
+      missing = unknownFields(parsed, schema);
+      if (missing.length) {
+        throw new Error(`Spec still references unknown fields: ${missing.join(', ')}`);
+      }
+    }
+
+    try {
+      validateCompilable(parsed, args.data);
+    } catch (compileError) {
+      const msg = compileError instanceof Error ? compileError.message : String(compileError);
+      raw = await askModel(
+        args.nl,
+        schema,
+        candidates,
+        args.llm,
+        `Previous spec failed to compile: ${msg}. Return a corrected ChartSpec JSON.`,
+      );
+      parsed = parseSpec(raw);
+      validateCompilable(parsed, args.data);
     }
 
     return { spec: parsed, source: 'llm', schema, raw };
   } catch (error) {
-    if (args.fallbackToRules || error instanceof MissingApiKeyError) {
-      const spec = candidates[0];
-      if (!spec) throw error;
-      return {
-        spec: {
-          ...spec,
-          insight: `规则推荐（AI 不可用：${error instanceof Error ? error.message : String(error)}）`,
-        },
-        source: 'rules',
-        schema,
-      };
+    const message = error instanceof Error ? error.message : String(error);
+    if (fallback) {
+      return rulesFallback(schema, message, args.nl);
     }
-    throw error;
+    throw error instanceof Error ? error : new Error(message);
   }
 }
 
@@ -106,22 +140,35 @@ export async function patchChartSpec(args: {
   spec: ChartSpec;
   data: DataRow[];
   llm?: LlmConfig;
+  fallbackToRules?: boolean;
 }): Promise<GenerateChartResult> {
   const schema = profileData(args.data);
-  const raw = await chatCompletion(
-    [
-      { role: 'system', content: CHART_SYSTEM_PROMPT },
-      {
-        role: 'user',
-        content: buildPatchUserPrompt({
-          nl: args.nl,
-          currentSpecJson: JSON.stringify(args.spec, null, 2),
-          schemaJson: JSON.stringify(compactSchemaForPrompt(schema), null, 2),
-        }),
-      },
-    ],
-    args.llm,
-  );
-  const parsed = ensureId(chartSpecSchema.parse(extractJsonObject(raw)) as ChartSpec);
-  return { spec: parsed, source: 'llm', schema, raw };
+  try {
+    const raw = await chatCompletion(
+      [
+        { role: 'system', content: CHART_SYSTEM_PROMPT },
+        {
+          role: 'user',
+          content: buildPatchUserPrompt({
+            nl: args.nl,
+            currentSpecJson: JSON.stringify(args.spec),
+            schemaJson: JSON.stringify(compactSchemaForPrompt(schema)),
+          }),
+        },
+      ],
+      args.llm,
+    );
+    const parsed = parseSpec(raw);
+    validateCompilable(parsed, args.data);
+    return { spec: parsed, source: 'llm', schema, raw };
+  } catch (error) {
+    if (args.fallbackToRules) {
+      return rulesFallback(
+        schema,
+        error instanceof Error ? error.message : String(error),
+        args.nl,
+      );
+    }
+    throw error;
+  }
 }

@@ -21,19 +21,41 @@ export class MissingApiKeyError extends Error {
   }
 }
 
-export function resolveLlmConfig(overrides: LlmConfig = {}): Required<Pick<LlmConfig, 'model' | 'baseUrl' | 'timeoutMs'>> & {
+function readEnv(name: string): string | undefined {
+  if (typeof process === 'undefined' || !process.env) return undefined;
+  const value = process.env[name];
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  // Node coerces `process.env.X = undefined` to the literal string "undefined"
+  if (!trimmed || trimmed === 'undefined' || trimmed === 'null') return undefined;
+  return trimmed;
+}
+
+export function resolveLlmConfig(overrides: LlmConfig = {}): {
   apiKey: string | undefined;
+  model: DeepSeekModel;
+  baseUrl: string;
+  timeoutMs: number;
 } {
-  const env = typeof process !== 'undefined' ? process.env : undefined;
-  return {
-    apiKey:
-      overrides.apiKey ??
-      env?.AI_ECHARTS_LLM_API_KEY ??
-      env?.DEEPSEEK_API_KEY,
-    model: (overrides.model ?? env?.AI_ECHARTS_LLM_MODEL ?? 'deepseek-v4-flash') as DeepSeekModel,
-    baseUrl: overrides.baseUrl ?? env?.AI_ECHARTS_LLM_BASE_URL ?? 'https://api.deepseek.com',
-    timeoutMs: overrides.timeoutMs ?? Number(env?.AI_ECHARTS_LLM_TIMEOUT_MS ?? 60000),
-  };
+  const apiKey =
+    (overrides.apiKey && overrides.apiKey.trim()) ||
+    readEnv('AI_ECHARTS_LLM_API_KEY') ||
+    readEnv('DEEPSEEK_API_KEY') ||
+    undefined;
+
+  const baseUrl =
+    (overrides.baseUrl && overrides.baseUrl.trim()) ||
+    readEnv('AI_ECHARTS_LLM_BASE_URL') ||
+    'https://api.deepseek.com';
+
+  const model = (overrides.model ||
+    readEnv('AI_ECHARTS_LLM_MODEL') ||
+    'deepseek-v4-flash') as DeepSeekModel;
+
+  const timeoutRaw = overrides.timeoutMs ?? Number(readEnv('AI_ECHARTS_LLM_TIMEOUT_MS') ?? 60000);
+  const timeoutMs = Number.isFinite(timeoutRaw) && timeoutRaw > 0 ? timeoutRaw : 60000;
+
+  return { apiKey, model, baseUrl, timeoutMs };
 }
 
 export async function chatCompletion(
@@ -45,9 +67,10 @@ export async function chatCompletion(
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), cfg.timeoutMs);
+  const url = `${cfg.baseUrl.replace(/\/$/, '')}/chat/completions`;
 
   try {
-    const res = await fetch(`${cfg.baseUrl.replace(/\/$/, '')}/chat/completions`, {
+    const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

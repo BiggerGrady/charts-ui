@@ -1,11 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import {
-  generateChartSpec,
-  recommendByRules,
-  type ChartSpec,
-  type DataRow,
-} from 'ai-echarts';
+import { recommendByRules, type ChartSpec, type DataRow } from 'ai-echarts';
 import { AiChart } from 'ai-echarts/vue';
 
 const salesRows: DataRow[] = [
@@ -27,7 +22,7 @@ const model = ref<'deepseek-v4-flash' | 'deepseek-v4-pro'>('deepseek-v4-flash');
 const theme = ref<'light' | 'dark' | 'brand'>('brand');
 const spec = ref<ChartSpec | null>(null);
 const source = ref<'llm' | 'rules' | null>(null);
-const status = ref('Vue Demo：数据 + 自然语言 → ChartSpec → AiChart');
+const status = ref('Vue Demo：BFF /api/generate-chart');
 const error = ref('');
 const loading = ref(false);
 
@@ -49,18 +44,25 @@ async function onGenerate(fallbackToRules: boolean) {
   if (apiKey.value) sessionStorage.setItem(KEY_STORAGE, apiKey.value);
   loading.value = true;
   try {
-    const result = await generateChartSpec({
-      nl: nl.value,
-      data: data.value,
-      fallbackToRules,
-      llm: { apiKey: apiKey.value || undefined, model: model.value },
+    const res = await fetch('/api/generate-chart', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        nl: nl.value,
+        data: data.value,
+        model: model.value,
+        fallbackToRules,
+        apiKey: apiKey.value || undefined,
+      }),
     });
-    spec.value = result.spec;
-    source.value = result.source;
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+    spec.value = json.spec;
+    source.value = json.source;
     status.value =
-      result.source === 'llm'
-        ? `DeepSeek (${model.value}) 已生成`
-        : '已使用规则推荐回退';
+      json.source === 'llm'
+        ? `DeepSeek (${model.value}) via BFF 已生成`
+        : `规则回退：${json.warnings?.[0] ?? 'AI unavailable'}`;
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
   } finally {
@@ -73,9 +75,9 @@ function onRulesOnly() {
     error.value = 'JSON 数据解析失败';
     return;
   }
-  spec.value = recommendByRules(data.value, 1)[0] ?? null;
+  spec.value = recommendByRules(data.value, 1, nl.value)[0] ?? null;
   source.value = 'rules';
-  status.value = '已使用本地规则推荐';
+  status.value = `已使用本地规则推荐（参考意图：${nl.value}）`;
 }
 </script>
 
@@ -87,7 +89,7 @@ function onRulesOnly() {
       <aside class="panel">
         <h2>Controls</h2>
         <label>DeepSeek API Key</label>
-        <input v-model="apiKey" type="password" placeholder="sk-..." autocomplete="off" />
+        <input v-model="apiKey" type="password" placeholder="sk-... 或 .env" autocomplete="off" />
         <label>Model</label>
         <select v-model="model">
           <option value="deepseek-v4-flash">deepseek-v4-flash</option>
@@ -104,17 +106,21 @@ function onRulesOnly() {
         <label>Data (JSON array)</label>
         <textarea v-model="dataText" />
         <div class="actions">
-          <button :disabled="loading" @click="onGenerate(false)">AI 生成图表</button>
-          <button class="secondary" :disabled="loading" @click="onGenerate(true)">AI（可回退）</button>
-          <button class="secondary" :disabled="loading" @click="onRulesOnly">仅规则推荐</button>
+          <button data-testid="btn-ai" :disabled="loading" @click="onGenerate(false)">AI 生成图表</button>
+          <button data-testid="btn-ai-fallback" class="secondary" :disabled="loading" @click="onGenerate(true)">
+            AI（可回退）
+          </button>
+          <button data-testid="btn-rules" class="secondary" :disabled="loading" @click="onRulesOnly">
+            仅规则推荐
+          </button>
         </div>
-        <p class="status" :class="{ error: !!error }">{{ error || status }}</p>
+        <p data-testid="status" class="status" :class="{ error: !!error }">{{ error || status }}</p>
       </aside>
       <main class="panel">
         <h2>Preview {{ source ? `· ${source}` : '' }}</h2>
         <AiChart v-if="spec && data" :spec="spec" :data="data" :theme="theme" :height="420" />
         <p v-else class="status">生成后将在此渲染图表。</p>
-        <pre v-if="spec" class="spec-box">{{ JSON.stringify(spec, null, 2) }}</pre>
+        <pre v-if="spec" data-testid="spec-box" class="spec-box">{{ JSON.stringify(spec, null, 2) }}</pre>
       </main>
     </div>
   </div>

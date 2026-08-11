@@ -1,5 +1,4 @@
-import * as echarts from 'echarts';
-import type { ECharts, EChartsOption } from 'echarts';
+import type { EChartsOption } from 'echarts';
 import {
   forwardRef,
   useEffect,
@@ -8,6 +7,7 @@ import {
   type CSSProperties,
   type HTMLAttributes,
 } from 'react';
+import { ensureEcharts, type ECharts } from '../core/echarts-setup';
 
 export interface BaseChartProps extends Omit<HTMLAttributes<HTMLDivElement>, 'children'> {
   option?: EChartsOption;
@@ -40,6 +40,10 @@ export const BaseChart = forwardRef<BaseChartRef, BaseChartProps>(function BaseC
 ) {
   const elRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<ECharts>();
+  const onReadyRef = useRef(onReady);
+  const onClickRef = useRef(onChartClick);
+  onReadyRef.current = onReady;
+  onClickRef.current = onChartClick;
 
   useImperativeHandle(ref, () => ({
     getEchartsInstance: () => chartRef.current,
@@ -48,14 +52,15 @@ export const BaseChart = forwardRef<BaseChartRef, BaseChartProps>(function BaseC
 
   useEffect(() => {
     if (!elRef.current) return;
+    const echarts = ensureEcharts();
     const instance = echarts.init(elRef.current, theme);
     chartRef.current = instance;
-    onReady?.(instance);
+    onReadyRef.current?.(instance);
 
     const ro = new ResizeObserver(() => instance.resize());
     ro.observe(elRef.current);
 
-    const onClick = (params: unknown) => onChartClick?.(params);
+    const onClick = (params: unknown) => onClickRef.current?.(params);
     instance.on('click', onClick);
 
     return () => {
@@ -64,8 +69,6 @@ export const BaseChart = forwardRef<BaseChartRef, BaseChartProps>(function BaseC
       instance.dispose();
       chartRef.current = undefined;
     };
-    // theme remount intentionally
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [theme]);
 
   useEffect(() => {

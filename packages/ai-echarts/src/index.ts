@@ -24,13 +24,12 @@ export {
 export { profileData, compactSchemaForPrompt } from './core/profile';
 export { recommendByRules, recommendChartType } from './core/recommend';
 export { applyTransforms } from './core/transform';
-export { compile, safeCompile, type CompileOptions } from './core/compile';
-export { getThemeTokens, type ThemeTokens } from './core/theme';
-
-// AI helpers also available from root for convenience
 export {
-  generateChartSpec,
-  patchChartSpec,
-  resolveLlmConfig,
-  MissingApiKeyError,
-} from './ai';
+  compile,
+  safeCompile,
+  extractTablePayload,
+  type CompileOptions,
+  type TablePayload,
+} from './core/compile';
+export { getThemeTokens, type ThemeTokens } from './core/theme';
+export { encodeFieldNames, yFields } from './core/fields';

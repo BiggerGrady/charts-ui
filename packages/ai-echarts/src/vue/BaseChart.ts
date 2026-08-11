@@ -1,6 +1,6 @@
-import * as echarts from 'echarts';
-import type { ECharts, EChartsOption } from 'echarts';
+import type { EChartsOption } from 'echarts';
 import { defineComponent, onBeforeUnmount, onMounted, ref, watch, h, type PropType } from 'vue';
+import { ensureEcharts, type ECharts } from '../core/echarts-setup';
 
 export const BaseChart = defineComponent({
   name: 'BaseChart',
@@ -22,6 +22,7 @@ export const BaseChart = defineComponent({
 
     onMounted(() => {
       if (!elRef.value) return;
+      const echarts = ensureEcharts();
       chart = echarts.init(elRef.value, props.theme as string | object | undefined);
       emit('ready', chart);
       ro = new ResizeObserver(() => chart?.resize());
@@ -42,7 +43,6 @@ export const BaseChart = defineComponent({
         chart.hideLoading();
         chart.setOption(option, { notMerge: true });
       },
-      { deep: true },
     );
 
     watch(
