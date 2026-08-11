@@ -283,14 +283,16 @@ MCP 示例（Cursor / Claude Desktop）：
 
 ---
 
-## 8. 请你拍板的最小问题单（回复这 6 项即可开工实现）
+## 8. 请你拍板的最小问题单
 
-1. **先做 React、Vue，还是双端一起？**  
-2. **npm scope 用什么？**（暂定 `@ai-echarts`？）  
-3. **一期图表类型白名单？**（是否同意 line/bar/area/pie/scatter/table）  
-4. **一期是否必须上 NL 出图？**（否 = 先不需 Key）  
-5. **若上 AI：准备用哪家 API？**（OpenAI / Claude / DeepSeek / 通义 / 其他 + 是否有现成 Key）  
-6. **能否提供 1 份脱敏样例数据 + 3 条典型问法？**
+> **已回复并落档** → 见 [决策记录-已确认项.md](./决策记录-已确认项.md)
+
+1. **先做 React、Vue，还是双端一起？** → 单包 `ai-echarts` + `/react` `/vue` 双入口  
+2. **npm scope 用什么？** → `ai-echarts`  
+3. **一期图表类型白名单？** → line/bar/area/pie/scatter/table  
+4. **一期是否必须上 NL 出图？** → 待你确认是否把「对话框出图」放进一期；默认先做组件、预留 DeepSeek  
+5. **若上 AI：准备用哪家 API？** → DeepSeek：`deepseek-v4-flash` / `deepseek-v4-pro`  
+6. **样例数据？** → 暂无业务数据；用通用 `DataRow[]` + 合成 fixtures  
 
 ---
 
