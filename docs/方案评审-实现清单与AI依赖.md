@@ -290,7 +290,7 @@ MCP 示例（Cursor / Claude Desktop）：
 1. **先做 React、Vue，还是双端一起？** → 单包 `ai-echarts` + `/react` `/vue` 双入口  
 2. **npm scope 用什么？** → `ai-echarts`  
 3. **一期图表类型白名单？** → line/bar/area/pie/scatter/table  
-4. **一期是否必须上 NL 出图？** → 待你确认是否把「对话框出图」放进一期；默认先做组件、预留 DeepSeek  
+4. **一期是否必须上 NL 出图？** → **是，一期要真 AI**（DeepSeek）  
 5. **若上 AI：准备用哪家 API？** → DeepSeek：`deepseek-v4-flash` / `deepseek-v4-pro`  
 6. **样例数据？** → 暂无业务数据；用通用 `DataRow[]` + 合成 fixtures  
 
