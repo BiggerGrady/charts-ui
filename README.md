@@ -6,6 +6,7 @@ AI-ECharts 组件库与自动生成 Dashboard 方案仓库。
 
 - [AI-ECharts 组件库 · 图表生成 · 跨端复用方案](./docs/AI-ECharts-组件库与Dashboard方案.md)
 - [多框架第三方引入兼容框架 & Demo 页面设计](./docs/多框架第三方引入与Demo设计.md)
+- [方案评审 · 实现清单 · AI 依赖与开源 Skills](./docs/方案评审-实现清单与AI依赖.md)
 
 覆盖：
 
@@ -13,3 +14,4 @@ AI-ECharts 组件库与自动生成 Dashboard 方案仓库。
 2. **AI 图表 / Dashboard 流程**：Schema 画像 → LLM 决策 → 确定性编译渲染
 3. **跨平台复用**：core + adapter monorepo、MCP/导出一致性
 4. **第三方引入**：`@ai-echarts/react` / `@ai-echarts/vue` 分包、API 镜像、Demo IA
+5. **开工清单**：你需要提供什么、模型选型、可复用开源 Skills/MCP

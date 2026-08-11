@@ -612,3 +612,4 @@ export function planExploreDashboard(schema: DatasetSchema): DashboardSpec {
 ## 14. 相关设计
 
 - [多框架第三方引入兼容框架 & Demo 页面设计](./多框架第三方引入与Demo设计.md)：React/Vue npm 分包、API 镜像、Demo 信息架构与线框（设计阶段，未实现）。
+- [方案评审 · 实现清单 · AI 依赖与开源 Skills](./方案评审-实现清单与AI依赖.md)：文档复审、轨道 A/B 交付、密钥与模型选型、可复用 Skills/MCP。
