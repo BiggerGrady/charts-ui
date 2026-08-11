@@ -483,3 +483,9 @@ demo-react / demo-vue
 1. **可以**作为 React / Vue 第三方组件库直接使用，且应 **分包发布**，而不是一个包强行混装两套框架运行时。  
 2. **兼容框架** = `core`（契约与编译）+ `react`/`vue`（薄 Adapter）+ 对齐 API + peerDependencies。  
 3. **Demo** 用双应用镜像（或文档站双 Tab）证明「同一 Spec，两端引入」；首期用 fixtures + 规则引擎即可，不必先接真 LLM。
+
+---
+
+## 9. 相关文档
+
+- [方案评审 · 实现清单 · AI 依赖与开源 Skills](./方案评审-实现清单与AI依赖.md)：开工前你需要提供什么、模型与 Key、可复用 Skills。
