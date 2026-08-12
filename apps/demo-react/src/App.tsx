@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { recommendByRules, type ChartSpec, type DataRow } from 'ai-echarts';
 import { AiChart } from 'ai-echarts/react';
-import { salesRows } from './fixtures/sales';
+import { salesRows, tsMsRows } from './fixtures/sales';
 
 const KEY_STORAGE = 'ai-echarts.demo.deepseekKey';
 
@@ -150,6 +150,28 @@ export function App() {
           <textarea value={nl} onChange={(e) => setNl(e.target.value)} />
 
           <label>Data (JSON array)</label>
+          <div className="actions" style={{ marginTop: 0, marginBottom: 8 }}>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                setDataText(JSON.stringify(salesRows, null, 2));
+                setNl('按地区对比销售额，用柱状图');
+              }}
+            >
+              样例：销售
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                setDataText(JSON.stringify(tsMsRows, null, 2));
+                setNl('根据时间戳数据，横坐标展示为当前时区时间，画折线图');
+              }}
+            >
+              样例：时间戳
+            </button>
+          </div>
           <textarea value={dataText} onChange={(e) => setDataText(e.target.value)} />
 
           <div className="actions">

@@ -41,6 +41,8 @@ export const chartStyleSchema = z.object({
   smooth: z.boolean().optional(),
   showLegend: z.boolean().optional(),
   orientation: z.enum(['vertical', 'horizontal']).optional(),
+  xAxisType: z.enum(['category', 'value', 'time']).optional(),
+  timeZone: z.enum(['local', 'utc']).optional(),
 });
 
 export const chartSpecSchema = z.object({

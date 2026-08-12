@@ -22,7 +22,8 @@ export {
 } from './core/schema';
 
 export { profileData, compactSchemaForPrompt } from './core/profile';
-export { recommendByRules, recommendChartType } from './core/recommend';
+export { recommendByRules, recommendChartType, applyTimeDisplayIntent, wantsLocalTimeAxis } from './core/recommend';
+export { detectEpochUnit, formatLocalDateTime, toEpochMs } from './core/time';
 export { applyTransforms } from './core/transform';
 export {
   compile,
