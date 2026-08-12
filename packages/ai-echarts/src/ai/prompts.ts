@@ -8,6 +8,10 @@ Rules:
 - For pie: encode.category + encode.angle (metric)
 - For line/bar/area: encode.x + encode.y
 - For scatter: encode.x + encode.y (both numeric)
+- If a field has type "time" (including epoch ms/s such as ts_ms), use it as encode.x for trends/line charts
+- When user asks for 时区/本地时间/时间戳展示/横轴时间:
+  set style.xAxisType="time" and style.timeZone="local" (do NOT invent a new formatted column)
+- Prefer chartType "line" for timestamp + metric series
 - If unsure, use bar or table
 - Set id, title, reason, and a short insight in the user's language
 - Never invent columns. Never output JavaScript functions.`;

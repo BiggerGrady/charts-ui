@@ -1,7 +1,7 @@
 import { compile } from '../core/compile';
 import { encodeFieldNames } from '../core/fields';
 import { compactSchemaForPrompt, profileData } from '../core/profile';
-import { recommendByRules } from '../core/recommend';
+import { applyTimeDisplayIntent, recommendByRules } from '../core/recommend';
 import { chartSpecSchema } from '../core/schema';
 import type { ChartSpec, DataRow, DatasetSchema } from '../core/types';
 import { chatCompletion, extractJsonObject, type LlmConfig } from './deepseek';
@@ -31,7 +31,6 @@ function ensureId(spec: ChartSpec): ChartSpec {
 
 function unknownFields(spec: ChartSpec, schema: DatasetSchema): string[] {
   const fieldNames = new Set(schema.fields.map((f) => f.name));
-  // Transform aliases may be invented; only validate encode names against schema OR aggregate `as`
   const aliases = new Set<string>();
   for (const t of spec.transform ?? []) {
     if (t.op === 'aggregate') {
@@ -51,7 +50,19 @@ function validateCompilable(spec: ChartSpec, data: DataRow[]) {
   compile(spec, data);
 }
 
-async function askModel(nl: string, schema: DatasetSchema, candidates: ChartSpec[], llm?: LlmConfig, extra?: string) {
+function finalizeSpec(spec: ChartSpec, schema: DatasetSchema, nl: string, data: DataRow[]): ChartSpec {
+  const normalized = applyTimeDisplayIntent(ensureId(spec), schema, nl);
+  validateCompilable(normalized, data);
+  return normalized;
+}
+
+async function askModel(
+  nl: string,
+  schema: DatasetSchema,
+  candidates: ChartSpec[],
+  llm?: LlmConfig,
+  extra?: string,
+) {
   const content =
     buildGenerateUserPrompt({
       nl,
@@ -111,7 +122,7 @@ export async function generateChartSpec(args: GenerateChartArgs): Promise<Genera
     }
 
     try {
-      validateCompilable(parsed, args.data);
+      parsed = finalizeSpec(parsed, schema, args.nl, args.data);
     } catch (compileError) {
       const msg = compileError instanceof Error ? compileError.message : String(compileError);
       raw = await askModel(
@@ -119,10 +130,9 @@ export async function generateChartSpec(args: GenerateChartArgs): Promise<Genera
         schema,
         candidates,
         args.llm,
-        `Previous spec failed to compile: ${msg}. Return a corrected ChartSpec JSON.`,
+        `Previous spec failed to compile: ${msg}. For timestamps use encode.x=timeField, style.xAxisType="time", style.timeZone="local". Return corrected ChartSpec JSON.`,
       );
-      parsed = parseSpec(raw);
-      validateCompilable(parsed, args.data);
+      parsed = finalizeSpec(parseSpec(raw), schema, args.nl, args.data);
     }
 
     return { spec: parsed, source: 'llm', schema, raw };
@@ -158,16 +168,11 @@ export async function patchChartSpec(args: {
       ],
       args.llm,
     );
-    const parsed = parseSpec(raw);
-    validateCompilable(parsed, args.data);
+    const parsed = finalizeSpec(parseSpec(raw), schema, args.nl, args.data);
     return { spec: parsed, source: 'llm', schema, raw };
   } catch (error) {
     if (args.fallbackToRules) {
-      return rulesFallback(
-        schema,
-        error instanceof Error ? error.message : String(error),
-        args.nl,
-      );
+      return rulesFallback(schema, error instanceof Error ? error.message : String(error), args.nl);
     }
     throw error;
   }

@@ -6,6 +6,8 @@ export type FieldType = 'number' | 'string' | 'time' | 'boolean' | 'category';
 
 export type FieldRoleHint = 'dimension' | 'measure' | 'unknown';
 
+export type TimeUnit = 'ms' | 's' | 'iso';
+
 export interface FieldProfile {
   name: string;
   type: FieldType;
@@ -15,6 +17,8 @@ export interface FieldProfile {
   sampleValues: Array<string | number | boolean | null>;
   min?: number;
   max?: number;
+  /** Present when type=time and values are epoch numbers / ISO */
+  timeUnit?: TimeUnit;
 }
 
 export interface DatasetSchema {
@@ -47,6 +51,9 @@ export interface ChartStyle {
   smooth?: boolean;
   showLegend?: boolean;
   orientation?: 'vertical' | 'horizontal';
+  /** Force x axis mode; `time` formats epoch/ISO as local/utc labels */
+  xAxisType?: 'category' | 'value' | 'time';
+  timeZone?: 'local' | 'utc';
 }
 
 export interface ChartSpec {
